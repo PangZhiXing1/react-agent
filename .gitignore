@@ -1,5 +1,7 @@
 # Agent 的工作区：里面是它读写产生的运行时文件，不入库
-test/
+# 用 test/* 而不是 test/ —— 写成 test/ 时整个目录被排除，下面的 ! 例外不会生效
+test/*
+!test/.gitkeep
 
 # Python 运行时产物
 __pycache__/
