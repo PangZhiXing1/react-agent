@@ -3,6 +3,7 @@
 注意：本模块中每个函数的 docstring 会被注入系统提示词（模型据此决定怎么调用），
 所以 docstring 必须写清用途、参数含义，并给出简单调用示例。
 """
+import ctypes
 import subprocess
 
 # 单条命令的输出上限：超过就截断，避免一次请求撑爆上下文
@@ -24,11 +25,17 @@ def write_to_file(file_path, content):
 
 def run_terminal_command(command):
     """执行终端命令，返回命令的输出内容或错误信息，例：run_terminal_command("dir")"""
-    # cmd.exe 按系统 ANSI 代码页输出（中文 Windows 为 936/GBK），必须显式按该编码解码：
-    # 父进程若处于 UTF-8 模式（如设了 PYTHONUTF8=1），默认解码会失败并丢掉全部输出。
+    # cmd.exe 的输出编码跟随控制台输出代码页，不是固定的某一种：
+    #   - 代码页 936   → 输出 GBK（dir 表头是中文「驱动器 C 中的卷没有标签」）
+    #   - 代码页 65001 → 输出 UTF-8（dir 表头会退回英文「Volume in drive C」）
+    # 写死任何一种都会在另一种环境下把中文解成乱码（实测踩过：在 65001 的终端里，
+    # 路径被解成 "ai鍥剧墖瑙嗛…"）。所以直接问 Windows 当前代码页，按它解码。
+    # 没有控制台时（输出被重定向）回退到系统 OEM 代码页 —— cmd 此时用的就是它。
     # errors="replace" 保证遇到非预期字节时只降级显示，不抛异常。
+    cp = ctypes.windll.kernel32.GetConsoleOutputCP() or ctypes.windll.kernel32.GetOEMCP()
     run_result = subprocess.run(
-        command, shell=True, capture_output=True, text=True, encoding="gbk", errors="replace"
+        command, shell=True, capture_output=True, text=True,
+        encoding="cp%d" % cp, errors="replace"
     )
 
     if run_result.returncode != 0:
